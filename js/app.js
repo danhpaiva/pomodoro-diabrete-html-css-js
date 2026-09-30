@@ -56,6 +56,18 @@
   const canvas = document.getElementById("pet-canvas");
   const ctx = canvas.getContext("2d");
 
+  // O bichinho e desenhado inteiramente com formas vetoriais (arcos, elipses,
+  // curvas) num espaco logico de 64x64 — nunca foi pixel art de verdade. O
+  // aspecto "pixelado" vinha so de ampliar esse canvas pequeno com
+  // nearest-neighbor. Aqui desenhamos no backing buffer numa resolucao bem
+  // maior (supersampling) e deixamos o navegador reduzir com suavizacao, o
+  // que da bordas lisas sem precisar reescrever nenhuma das contas abaixo
+  // (todas continuam em termos de coordenadas 0..64).
+  const RENDER_SCALE = 4;
+  canvas.width = SPRITE * RENDER_SCALE;
+  canvas.height = SPRITE * RENDER_SCALE;
+  ctx.scale(RENDER_SCALE, RENDER_SCALE);
+
   const els = {
     phasePill: document.getElementById("phase-pill"),
     status: document.getElementById("status"),
