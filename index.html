@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Pomodoro Pet</title>
+    <link rel="stylesheet" href="style.css">
+  </head>
+  <body>
+    <main class="card">
+      <header class="card-header">
+        <h1>Pomodoro Pet</h1>
+        <div class="header-right">
+          <span id="phase-pill" class="pill">FOCO</span>
+          <span id="status" class="status">pausado</span>
+        </div>
+      </header>
+
+      <div class="pet-stage">
+        <div class="pet-shadow"></div>
+        <canvas id="pet-canvas" width="64" height="64"></canvas>
+        <span id="alert-mark" class="alert-mark">!</span>
+      </div>
+
+      <div id="timer" class="timer">25:00</div>
+
+      <div class="energy-row">
+        <span id="energy-label" class="energy-label">energia 85%</span>
+        <div class="energy-bar">
+          <div id="energy-fill" class="energy-fill"></div>
+        </div>
+      </div>
+
+      <div class="cycles-row">
+        <span class="cycles-label">ciclos</span>
+        <div id="cycles" class="cycles"></div>
+      </div>
+
+      <div class="buttons">
+        <button id="btn-main" type="button" class="btn primary">iniciar foco</button>
+        <button id="btn-skip" type="button" class="btn">pular</button>
+        <button id="btn-reset" type="button" class="btn">reiniciar</button>
+      </div>
+
+      <p class="hint">espaço/enter — ação &nbsp;·&nbsp; s — pular &nbsp;·&nbsp; r — reiniciar</p>
+    </main>
+
+    <script src="js/pet.js"></script>
+    <script src="js/app.js"></script>
+  </body>
+</html>

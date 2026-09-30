@@ -1,0 +1,105 @@
+# Pipeline de CI/CD deste site estatico (HTML/CSS/JS puros, sem build step).
+#
+# Sao dois processos separados, cada um com sua responsabilidade:
+#   - CI (job `ci`):  roda em todo push e pull request para `main`. Valida o
+#     codigo (arquivos essenciais, sintaxe JS, HTML, smoke test servindo o
+#     site) SEM publicar nada. E o "portao de qualidade".
+#   - CD (job `cd`):  roda só em push para `main`, e só se o job `ci` passar
+#     (`needs: ci`). Publica o conteudo do repositorio no GitHub Pages.
+#
+# Em um pull request, apenas o CI roda (o CD e pulado pela condicao `if`),
+# entao nada e publicado a partir de codigo ainda nao mergeado.
+
+name: CI/CD
+
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+    branches: ["main"]
+  workflow_dispatch: # permite rodar manualmente pela aba Actions
+
+# Permissao minima por padrao; o job `cd` eleva o que precisa (pages/id-token).
+permissions:
+  contents: read
+
+jobs:
+  # ---------------------------------------------------------------------
+  # CI — valida o site antes de qualquer deploy.
+  # ---------------------------------------------------------------------
+  ci:
+    name: CI - validar
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout do codigo
+        uses: actions/checkout@v4
+
+      - name: Configura Node.js (usado so para checar sintaxe do JS)
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Verifica se os arquivos essenciais existem
+        run: |
+          set -e
+          test -f index.html
+          test -f style.css
+          test -f js/pet.js
+          test -f js/app.js
+          echo "OK: arquivos essenciais presentes"
+
+      - name: Valida sintaxe de cada arquivo JavaScript
+        run: |
+          set -e
+          for file in js/*.js; do
+            echo "verificando $file"
+            node --check "$file"
+          done
+
+      - name: Valida o HTML (html-validate)
+        run: npx --yes html-validate index.html
+
+      - name: Smoke test - sobe o site e confere resposta HTTP
+        run: |
+          set -e
+          python3 -m http.server 8080 &
+          SERVER_PID=$!
+          sleep 1
+          STATUS=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:8080/index.html)
+          kill "$SERVER_PID"
+          echo "status HTTP: $STATUS"
+          test "$STATUS" = "200"
+
+  # ---------------------------------------------------------------------
+  # CD — publica no GitHub Pages. So roda apos o CI passar, e so em push
+  # direto para `main` (nunca a partir de um pull request).
+  # ---------------------------------------------------------------------
+  cd:
+    name: CD - publicar no GitHub Pages
+    needs: ci
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    concurrency:
+      group: pages
+      cancel-in-progress: true
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Checkout do codigo
+        uses: actions/checkout@v4
+
+      - name: Configura o GitHub Pages
+        uses: actions/configure-pages@v5
+
+      - name: Empacota o site como artifact do Pages
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: "."
+
+      - name: Deploy no GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
