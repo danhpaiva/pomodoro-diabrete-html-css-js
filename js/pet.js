@@ -23,7 +23,7 @@ class PomodoroPet {
     breakDuration = 5 * 60,
     startEnergy = 85.0,
     focusCost = 45.0,
-    breakRestore = 45.0,
+    breakRestore = 30.0,
   } = {}) {
     this.focusDuration = focusDuration;
     this.breakDuration = breakDuration;
