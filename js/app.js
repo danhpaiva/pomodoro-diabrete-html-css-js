@@ -3,6 +3,8 @@
 // numa superficie logica 64x64 depois ampliada com nearest-neighbor.
 
 (() => {
+  const APP_NAME = "Pomodemônio";
+  const STORAGE_KEY = "pomodoro-pet:v1";
   const SPRITE = 64; // resolucao logica do bichinho
 
   // Paleta (igual ao original)
@@ -72,6 +74,86 @@
   let alertTimer = 0.0;
   let look = [0.0, 0.0];
   let lastTime = null;
+  let lastSaveAt = 0;
+
+  // --- som ---
+  // So pode ser criado apos um gesto real do usuario (click/tecla), por isso
+  // a criacao fica separada da reproducao: ensureAudio() roda nas acoes do
+  // usuario, playChime() pode ser chamada depois por codigo (ex.: o timer
+  // chegando a zero sozinho).
+  let audioCtx = null;
+  function ensureAudio() {
+    if (audioCtx) {
+      if (audioCtx.state === "suspended") audioCtx.resume();
+      return;
+    }
+    const AudioCtor = window.AudioContext || window.webkitAudioContext;
+    if (AudioCtor) audioCtx = new AudioCtor();
+  }
+  function playChime() {
+    if (!audioCtx) return;
+    const t0 = audioCtx.currentTime;
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    osc.type = "sine";
+    osc.frequency.setValueAtTime(880, t0);
+    osc.frequency.setValueAtTime(1175, t0 + 0.12);
+    gain.gain.setValueAtTime(0.0001, t0);
+    gain.gain.exponentialRampToValueAtTime(0.25, t0 + 0.02);
+    gain.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.4);
+    osc.connect(gain).connect(audioCtx.destination);
+    osc.start(t0);
+    osc.stop(t0 + 0.45);
+  }
+
+  // --- persistencia ---
+  // Uma aba em segundo plano pode ser descartada pelo navegador (economia de
+  // memoria) e recarregada do zero na proxima visita — sem isso, o Pomodoro
+  // "reinicia sozinho" bem no meio de uma sessao. Guardamos o estado e, ao
+  // recarregar, recuperamos o tempo real que passou em vez de zerar o timer.
+  function saveState() {
+    try {
+      localStorage.setItem(
+        STORAGE_KEY,
+        JSON.stringify({
+          phase: pet.phase,
+          remaining: pet.remaining,
+          running: pet.running,
+          awaiting: pet.awaiting,
+          cycles: pet.cycles,
+          energy: pet.energy,
+          savedAt: Date.now(),
+        })
+      );
+    } catch (e) {
+      // localStorage indisponivel (aba anonima, quota etc.) — segue sem persistir
+    }
+  }
+
+  function loadState() {
+    let saved;
+    try {
+      const raw = localStorage.getItem(STORAGE_KEY);
+      if (!raw) return;
+      saved = JSON.parse(raw);
+    } catch (e) {
+      return;
+    }
+    pet.phase = saved.phase === BREAK ? BREAK : FOCUS;
+    pet.remaining = Number(saved.remaining) || 0;
+    pet.running = Boolean(saved.running);
+    pet.awaiting = Boolean(saved.awaiting);
+    pet.cycles = Number(saved.cycles) || 0;
+    pet.energy = clamp(Number(saved.energy), 0, 100);
+
+    if (pet.running && !pet.awaiting) {
+      const elapsedReal = Math.max(0, (Date.now() - Number(saved.savedAt || Date.now())) / 1000);
+      const events = pet.tick(elapsedReal);
+      for (const event of events) {
+        if (event === FOCUS_DONE || event === BREAK_DONE) alertTimer = ALERT_TIME;
+      }
+    }
+  }
 
   function accent() {
     return pet.phase === BREAK ? BREAK_ACCENT : FOCUS_ACCENT;
@@ -91,19 +173,28 @@
   }
 
   function primaryAction() {
+    ensureAudio();
     const event = pet.toggle();
     if (event === BREAK_STARTED) joy = JOY_TIME;
+    saveState();
   }
 
   function doSkip() {
+    ensureAudio();
     const event = pet.skip();
-    if (event === FOCUS_DONE || event === BREAK_DONE) alertTimer = ALERT_TIME;
+    if (event === FOCUS_DONE || event === BREAK_DONE) {
+      alertTimer = ALERT_TIME;
+      playChime();
+    }
+    saveState();
   }
 
   function doReset() {
+    ensureAudio();
     pet.reset();
     joy = 0;
     alertTimer = 0;
+    saveState();
   }
 
   // --- eventos ---
@@ -141,6 +232,26 @@
       clamp((e.clientY - cy) / (rect.height * 1.5), -1.0, 1.0),
     ];
   });
+
+  // salva antes da aba ser ocultada/fechada, para nao perder o progresso
+  // caso o navegador descarte a aba em segundo plano.
+  document.addEventListener("visibilitychange", () => {
+    if (document.hidden) saveState();
+  });
+  window.addEventListener("pagehide", saveState);
+
+  // --- titulo da aba ---
+  // Mostra o timer ao vivo (da pra acompanhar sem trocar de aba) e, quando a
+  // fase termina, pisca uma mensagem chamativa ate o usuario dar o proximo passo.
+  function updateTitle(now) {
+    if (pet.awaiting) {
+      const blinkOn = Math.floor(now / 900) % 2 === 0;
+      const alertMsg = pet.phase === FOCUS ? "⏰ Hora da pausa!" : "⏰ Hora de focar!";
+      document.title = blinkOn ? alertMsg : APP_NAME;
+      return;
+    }
+    document.title = `${PomodoroPet.formatTime(pet.remaining)} · ${pet.phaseLabel} — ${APP_NAME}`;
+  }
 
   // --- UI (DOM) ---
   function updateUI() {
@@ -536,16 +647,26 @@
 
     const events = pet.tick(dt);
     for (const event of events) {
-      if (event === FOCUS_DONE || event === BREAK_DONE) alertTimer = ALERT_TIME;
+      if (event === FOCUS_DONE || event === BREAK_DONE) {
+        alertTimer = ALERT_TIME;
+        playChime();
+      }
     }
     joy = Math.max(0.0, joy - dt);
     alertTimer = Math.max(0.0, alertTimer - dt);
 
     updateUI();
+    updateTitle(now);
     drawSprite(now / 1000.0);
+
+    if (now - lastSaveAt > 1000) {
+      saveState();
+      lastSaveAt = now;
+    }
 
     requestAnimationFrame(frame);
   }
 
+  loadState();
   requestAnimationFrame(frame);
 })();
