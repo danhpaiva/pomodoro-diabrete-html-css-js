@@ -1,4 +1,4 @@
-# pomodoro-diabrete-html-css-js
+# Pomodemônio
 
 O pomodoro que vira o capeta quando você trabalha demais.
 
